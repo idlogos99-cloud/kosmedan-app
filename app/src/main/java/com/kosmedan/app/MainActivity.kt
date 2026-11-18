@@ -1,65 +1,51 @@
-package com.kosmedan.app;
+package com.kosmedan.app
 
-import android.content.Intent;
-import android.net.Uri;
-import android.os.Bundle;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import androidx.appcompat.app.AppCompatActivity;
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.appcompat.app.AppCompatActivity
 
-public class MainActivity extends AppCompatActivity {
-    private WebView webView;
+class MainActivity : AppCompatActivity() {
+    private lateinit var webView: WebView
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        webView = new WebView(this);
-        setContentView(webView);
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        webView = WebView(this)
+        setContentView(webView)
 
-        webView.getSettings().setJavaScriptEnabled(true);
-        webView.getSettings().setDomStorageEnabled(true);
+        webView.settings.javaScriptEnabled = true
+        webView.settings.domStorageEnabled = true
 
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Kalo link WhatsApp / intent / telpon, lempar ke aplikasi luar
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                if (url == null) return false
                 if (url.startsWith("intent://") || url.startsWith("whatsapp://") || url.startsWith("tel:") || url.startsWith("mailto:")) {
                     try {
-                        Intent intent;
-                        if (url.startsWith("intent://")) {
-                            intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
-                            // Kalo WA belum ke-install, buka via browser wa.me
-                            if (intent.getData() != null && intent.getData().toString().contains("send")) {
-                                // ambil nomornya, fallback ke wa.me
-                            }
+                        val intent = if (url.startsWith("intent://")) {
+                            Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
                         } else {
-                            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         }
-                        startActivity(intent);
-                    } catch (Exception e) {
-                        // Fallback paling aman: buka wa.me
+                        startActivity(intent)
+                    } catch (e: Exception) {
                         try {
-                            Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/6285182445887?text=Halo%20Alif"));
-                            startActivity(fallback);
-                        } catch (Exception ex) {}
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/6285182445887?text=Halo%20Alif")))
+                        } catch (ex: Exception) {}
                     }
-                    return true;
+                    return true
                 }
-                // Kalo link web biasa, buka di dalam aplikasi
-                view.loadUrl(url);
-                return true;
+                view?.loadUrl(url)
+                return true
             }
-        });
-
-        webView.loadUrl("https://kosmedan.my.id");
+        }
+        webView.loadUrl("https://kosmedan.my.id")
     }
 
-    @Override
-    public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (webView.canGoBack()) webView.goBack()
+        else super.onBackPressed()
     }
 }
