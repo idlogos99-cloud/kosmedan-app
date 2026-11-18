@@ -41,22 +41,33 @@ class MainActivity : AppCompatActivity() {
 
                 popupWebView!!.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(v: WebView?, url: String?): Boolean {
+                        // FIX: Kalau popup udah selesai dan balik ke kosmedan, tutup popup
                         if (url != null && url.contains("kosmedan.my.id")) {
-                            setContentView(webView)
-                            popupWebView?.destroy()
-                            popupWebView = null
+                            closePopup()
                             webView.loadUrl(url)
                             return true
                         }
                         return false
+                    }
+                    override fun onPageFinished(v: WebView?, url: String?) {
+                        super.onPageFinished(v, url)
+                        // FIX UTAMA: Kalau popup udah jadi putih / blank, berarti login udah selesai
+                        // Langsung tutup popup dan refresh halaman utama
+                        if (url != null && (url == "about:blank" || url == "" || url.contains("__/auth/handler"))) {
+                            // Kasih jeda 800ms biar Firebase sempat kirim data login ke halaman utama
+                            v?.postDelayed({
+                                closePopup()
+                                webView.reload()
+                            }, 800)
+                        }
                     }
                 }
 
                 popupWebView!!.webChromeClient = object : WebChromeClient() {
                     override fun onCloseWindow(window: WebView?) {
                         super.onCloseWindow(window)
-                        setContentView(webView)
-                        popupWebView = null
+                        closePopup()
+                        webView.reload()
                     }
                 }
 
@@ -69,20 +80,26 @@ class MainActivity : AppCompatActivity() {
 
             override fun onCloseWindow(window: WebView?) {
                 super.onCloseWindow(window)
-                setContentView(webView)
-                popupWebView = null
+                closePopup()
+                webView.reload()
             }
         }
 
         webView.loadUrl("https://kosmedan.my.id")
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
+    private fun closePopup() {
         if (popupWebView != null) {
             setContentView(webView)
             popupWebView?.destroy()
             popupWebView = null
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (popupWebView != null) {
+            closePopup()
             return
         }
         if (webView.canGoBack()) webView.goBack()
