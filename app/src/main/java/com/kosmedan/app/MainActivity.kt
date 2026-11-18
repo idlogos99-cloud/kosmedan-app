@@ -11,6 +11,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_KosMedan)
         super.onCreate(savedInstanceState)
         webView = WebView(this)
         setContentView(webView)
