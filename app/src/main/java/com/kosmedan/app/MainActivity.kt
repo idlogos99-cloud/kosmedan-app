@@ -1,14 +1,17 @@
 package com.kosmedan.app
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
+import android.webkit.WebViewClient
+import android.os.Message
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
+    private var popupWebView: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_KosMedan)
@@ -16,82 +19,87 @@ class MainActivity : AppCompatActivity() {
         webView = WebView(this)
         setContentView(webView)
 
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
+        val s = webView.settings
+        s.javaScriptEnabled = true
+        s.domStorageEnabled = true
+        s.databaseEnabled = true
+        s.javaScriptCanOpenWindowsAutomatically = true
+        s.setSupportMultipleWindows(true)
+        s.cacheMode = WebSettings.LOAD_DEFAULT
+
+        // PENTING: Palsuin User Agent jadi Chrome HP asli
+        // Biar Google ga blokir dengan alasan "WebView"
+        s.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                if (url == null) return false
-
-                // Kalau ini awal alur Firebase Auth, lempar SEKALIGUS ke Chrome Full
-                // Jangan dipotong di tengah, harus dari awal di Chrome
-                if (isAuthUrl(url)) {
-                    openInFullChrome(url)
-                    return true
-                }
-
-                if (url.startsWith("intent://") || url.startsWith("whatsapp://") || url.startsWith("tel:") || url.startsWith("mailto:")) {
-                    try {
-                        val intent = if (url.startsWith("intent://")) {
-                            Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-                        } else {
-                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        }
-                        startActivity(intent)
-                    } catch (e: Exception) {
-                        try {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/6285182445887?text=Halo%20Alif")))
-                        } catch (ex: Exception) {}
-                    }
-                    return true
-                }
-                view?.loadUrl(url)
-                return true
+                // Jangan lempar ke Chrome lagi, semua di dalem WebView
+                return false
             }
         }
 
-        val data: Uri? = intent?.data
-        if (data != null && data.toString().contains("kosmedan.my.id")) {
-            webView.loadUrl(data.toString())
-        } else {
-            webView.loadUrl("https://kosmedan.my.id")
-        }
-    }
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
+                // Ini yang bikin popup Google bisa kebuka
+                popupWebView = WebView(this@MainActivity)
+                popupWebView!!.settings.javaScriptEnabled = true
+                popupWebView!!.settings.domStorageEnabled = true
+                popupWebView!!.settings.javaScriptCanOpenWindowsAutomatically = true
+                popupWebView!!.settings.setSupportMultipleWindows(true)
+                popupWebView!!.settings.userAgentString = webView.settings.userAgentString
 
-    private fun isAuthUrl(url: String): Boolean {
-        return url.contains("accounts.google.com") ||
-            url.contains("firebaseapp.com/__/auth") ||
-            url.contains("kosmedan.my.id/__/auth") ||
-            url.contains("__/auth/handler") ||
-            url.contains("google.com/o/oauth2") ||
-            url.contains("oauth")
-    }
+                popupWebView!!.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView?, url: String?): Boolean {
+                        // Kalau popup udah selesai dan balik ke kosmedan, tutup popup
+                        if (url != null && url.contains("kosmedan.my.id")) {
+                            popupWebView?.let { setContentView(webView); it.destroy() }
+                            popupWebView = null
+                            webView.loadUrl(url)
+                            return true
+                        }
+                        return false
+                    }
+                    override fun onPageFinished(v: WebView?, url: String?) {
+                        super.onPageFinished(v, url)
+                        // Kalau URL popup udah jadi blank / close, tutup
+                        if (url != null && (url.contains("__/auth/handler") || url.contains("blank"))) {
+                            // biarin, tunggu redirect
+                        }
+                    }
+                }
+                popupWebView!!.webChromeClient = object : WebChromeClient() {
+                    override fun onCloseWindow(window: WebView?) {
+                        super.onCloseWindow(window)
+                        popupWebView?.let { setContentView(webView) }
+                        popupWebView = null
+                    }
+                }
 
-    private fun openInFullChrome(url: String) {
-        try {
-            // PENTING: Pake ACTION_VIEW biasa, JANGAN CustomTabsIntent
-            // Biar sessionStorage Firebase ga kepotong
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            intent.setPackage("com.android.chrome")
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-        } catch (e: Exception) {
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            } catch (ex: Exception) {}
-        }
-    }
+                setContentView(popupWebView!!)
+                val transport = resultMsg?.obj as WebView.WebViewTransport
+                transport.webView = popupWebView
+                resultMsg.sendToTarget()
+                return true
+            }
 
-    override fun onNewIntent(intent: Intent?) {
-        super.onNewIntent(intent)
-        val data = intent?.data
-        if (data != null && data.toString().contains("kosmedan.my.id")) {
-            webView.loadUrl(data.toString())
+            override fun onCloseWindow(window: WebView?) {
+                super.onCloseWindow(window)
+                popupWebView?.let { setContentView(webView) }
+                popupWebView = null
+            }
         }
+
+        webView.loadUrl("https://kosmedan.my.id")
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (popupWebView != null) {
+            setContentView(webView)
+            popupWebView?.destroy()
+            popupWebView = null
+            return
+        }
         if (webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
     }
