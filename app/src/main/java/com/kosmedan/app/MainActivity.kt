@@ -1,12 +1,17 @@
 package com.kosmedan.app
 
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Message
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -14,12 +19,60 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var popupWebView: WebView? = null
 
+    // FIX UPLOAD FOTO: Penampung callback file picker
+    private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
+
+    private val filePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (fileUploadCallback == null) return@registerForActivityResult
+        var results: Array<Uri>? = null
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            if (data != null) {
+                // Kalau pilih banyak foto
+                if (data.clipData != null) {
+                    val count = data.clipData!!.itemCount
+                    val uris = ArrayList<Uri>()
+                    for (i in 0 until count) {
+                        uris.add(data.clipData!!.getItemAt(i).uri)
+                    }
+                    results = uris.toTypedArray()
+                } else if (data.data != null) {
+                    // Kalau pilih 1 foto
+                    results = arrayOf(data.data!!)
+                }
+            }
+        }
+        // Kalau batal pilih, kirim null biar WebView ga nge-hang
+        fileUploadCallback?.onReceiveValue(results)
+        fileUploadCallback = null
+    }
+
+    private fun openFilePicker(filePathCallback: ValueCallback<Array<Uri>>?, fileChooserParams: WebChromeClient.FileChooserParams): Boolean {
+        // Kalau ada callback lama yang belum kelar, batalin dulu
+        fileUploadCallback?.onReceiveValue(null)
+        fileUploadCallback = filePathCallback
+        try {
+            val intent = fileChooserParams.createIntent()
+            // Biar bisa pilih banyak foto sekaligus (multiple)
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            filePickerLauncher.launch(intent)
+        } catch (e: Exception) {
+            // Fallback kalau createIntent gagal (HP jadul)
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+            intent.type = "image/*"
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            filePickerLauncher.launch(intent)
+        }
+        return true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_KosMedan)
         super.onCreate(savedInstanceState)
 
-        // FIX UTAMA: Pake FrameLayout, jadi WebView utama TETAP nempel di layar
-        // Popup cuma ditumpuk di atasnya, bukan gantiin
         container = FrameLayout(this)
         setContentView(container)
 
@@ -32,12 +85,24 @@ class MainActivity : AppCompatActivity() {
         s.databaseEnabled = true
         s.javaScriptCanOpenWindowsAutomatically = true
         s.setSupportMultipleWindows(true)
+        s.allowFileAccess = true
+        s.allowContentAccess = true
         s.cacheMode = WebSettings.LOAD_DEFAULT
         s.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
         webView.webViewClient = WebViewClient()
 
         webView.webChromeClient = object : WebChromeClient() {
+            // FIX UPLOAD FOTO: Ini yang bikin Pilih File kebuka di APK
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                if (fileChooserParams == null) return false
+                return openFilePicker(filePathCallback, fileChooserParams)
+            }
+
             override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
                 popupWebView = WebView(this@MainActivity)
                 popupWebView!!.settings.javaScriptEnabled = true
@@ -45,13 +110,22 @@ class MainActivity : AppCompatActivity() {
                 popupWebView!!.settings.databaseEnabled = true
                 popupWebView!!.settings.javaScriptCanOpenWindowsAutomatically = true
                 popupWebView!!.settings.setSupportMultipleWindows(true)
+                popupWebView!!.settings.allowFileAccess = true
+                popupWebView!!.settings.allowContentAccess = true
                 popupWebView!!.settings.userAgentString = webView.settings.userAgentString
 
                 popupWebView!!.webViewClient = WebViewClient()
                 popupWebView!!.webChromeClient = object : WebChromeClient() {
+                    override fun onShowFileChooser(
+                        webView: WebView?,
+                        filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: FileChooserParams?
+                    ): Boolean {
+                        if (fileChooserParams == null) return false
+                        return openFilePicker(filePathCallback, fileChooserParams)
+                    }
                     override fun onCloseWindow(window: WebView?) {
                         super.onCloseWindow(window)
-                        // Firebase yang nutup sendiri kalau udah berhasil - ini yang ditunggu-tunggu
                         closePopup()
                     }
                 }
@@ -79,14 +153,6 @@ class MainActivity : AppCompatActivity() {
             container.removeView(popupWebView)
             popupWebView?.destroy()
             popupWebView = null
-            // Ga usah reload paksa, biar Firebase yang ngasih tau halaman utama kalau udah login
-            // Kalau 2 detik masih belum login, baru reload
-            webView.postDelayed({
-                // Cek masih di halaman login atau engga, kalau masih, reload sekali
-                if (webView.url?.contains("dashboard") == true || webView.url?.contains("pemilik") == true) {
-                    // Biarin, halaman utama lagi proses login
-                }
-            }, 2000)
         }
     }
 
