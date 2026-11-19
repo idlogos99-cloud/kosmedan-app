@@ -15,6 +15,8 @@ class MainActivity : AppCompatActivity() {
     private var popupWebView: WebView? = null
     private val handler = Handler(Looper.getMainLooper())
     private var popupCheckRunnable: Runnable? = null
+    private var sudahLihatGoogle = false
+    private var sudahLihatHandlerAwal = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_KosMedan)
@@ -35,6 +37,8 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
+                sudahLihatGoogle = false
+                sudahLihatHandlerAwal = false
                 popupWebView = WebView(this@MainActivity)
                 popupWebView!!.settings.javaScriptEnabled = true
                 popupWebView!!.settings.domStorageEnabled = true
@@ -54,8 +58,6 @@ class MainActivity : AppCompatActivity() {
                 val transport = resultMsg?.obj as WebView.WebViewTransport
                 transport.webView = popupWebView
                 resultMsg.sendToTarget()
-
-                // MULAI PANTAU POPUP TIAP 500ms
                 startPopupWatcher()
                 return true
             }
@@ -76,20 +78,30 @@ class MainActivity : AppCompatActivity() {
                 val popup = popupWebView
                 if (popup == null) return
                 val url = popup.url ?: ""
-                // Kalau popup udah blank / handler / udah ga ada isinya, berarti login selesai
-                // Tunggu 1 detik biar Firebase sempat kirim token, baru tutup
-                if (url == "about:blank" || url == "" || url.contains("__/auth/handler")) {
+
+                // Tandai handler pertama (awal) - ini JANGAN ditutup
+                if (url.contains("__/auth/handler") && !sudahLihatGoogle) {
+                    sudahLihatHandlerAwal = true
+                }
+
+                // Tandai kalau udah sampai ke halaman Google
+                if (url.contains("accounts.google.com")) {
+                    sudahLihatGoogle = true
+                }
+
+                // BARU BOLEH TUTUP: udah pernah ke Google DAN sekarang balik lagi ke handler
+                // Blank / putih di tengah jalan DIABAIKAN, biar Firebase sempat kirim token
+                if (sudahLihatGoogle && sudahLihatHandlerAwal && url.contains("__/auth/handler")) {
                     handler.postDelayed({
                         closePopup()
                         webView.reload()
-                    }, 1000)
+                    }, 1500)
                     return
                 }
-                // Kalau belum, cek lagi 500ms kemudian
                 handler.postDelayed(this, 500)
             }
         }
-        handler.postDelayed(popupCheckRunnable!!, 1000)
+        handler.postDelayed(popupCheckRunnable!!, 800)
     }
 
     private fun closePopup() {
