@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Message
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -87,10 +88,32 @@ class MainActivity : AppCompatActivity() {
         s.setSupportMultipleWindows(true)
         s.allowFileAccess = true
         s.allowContentAccess = true
-        s.cacheMode = WebSettings.LOAD_DEFAULT
+        // FIX APK CACHE: Ini biangnya - LOAD_DEFAULT bikin APK load JS lama tanpa api_key
+        // Ganti ke NO_CACHE biar selalu load Blogger terbaru yang udah bener
+        s.cacheMode = WebSettings.LOAD_NO_CACHE
+        s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        s.mediaPlaybackRequiresUserGesture = false
         s.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
-        webView.webViewClient = WebViewClient()
+        // FIX APK CACHE: Hapus cache lama yang isinya kode tanpa api_key
+        webView.clearCache(true)
+        webView.clearHistory()
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                // Biar semua link kosmedan.my.id tetep di dalam APK, ga mental ke Chrome
+                val url = request?.url.toString()
+                if (url.contains("kosmedan.my.id")) {
+                    return false
+                }
+                // Link luar (WA, dll) buka di browser luar
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    startActivity(intent)
+                } catch (e: Exception) { }
+                return true
+            }
+        }
 
         webView.webChromeClient = object : WebChromeClient() {
             // FIX UPLOAD FOTO: Ini yang bikin Pilih File kebuka di APK
@@ -112,6 +135,7 @@ class MainActivity : AppCompatActivity() {
                 popupWebView!!.settings.setSupportMultipleWindows(true)
                 popupWebView!!.settings.allowFileAccess = true
                 popupWebView!!.settings.allowContentAccess = true
+                popupWebView!!.settings.cacheMode = WebSettings.LOAD_NO_CACHE
                 popupWebView!!.settings.userAgentString = webView.settings.userAgentString
 
                 popupWebView!!.webViewClient = WebViewClient()
