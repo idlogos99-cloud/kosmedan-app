@@ -70,6 +70,35 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    // FIX WA: Fungsi khusus buka link WA / intent:// biar ga halaman putih
+    private fun handleExternalLink(url: String): Boolean {
+        // 1. Kalau intent://send?phone=... -> parse pakai URI_INTENT_SCHEME
+        if (url.startsWith("intent://")) {
+            try {
+                val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                startActivity(intent)
+            } catch (e: Exception) {
+                // Fallback ke wa.me kalau parse gagal
+                try {
+                    val phone = url.substringAfter("phone=").substringBefore("&").substringBefore(";").substringBefore("#")
+                    val textPart = if (url.contains("text=")) url.substringAfter("text=").substringBefore(";").substringBefore("#") else ""
+                    val waUrl = if (phone.isNotEmpty()) "https://wa.me/$phone?text=$textPart" else "https://wa.me/6281260710087"
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(waUrl)))
+                } catch (e2: Exception) { }
+            }
+            return true
+        }
+
+        // 2. Kalau wa.me / whatsapp / tel: / mailto: -> buka di luar APK
+        if (url.startsWith("https://wa.me") || url.startsWith("https://api.whatsapp.com") || url.startsWith("whatsapp://") || url.startsWith("tel:") || url.startsWith("mailto:")) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } catch (e: Exception) { }
+            return true
+        }
+        return false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_KosMedan)
         super.onCreate(savedInstanceState)
@@ -101,12 +130,18 @@ class MainActivity : AppCompatActivity() {
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                // Biar semua link kosmedan.my.id tetep di dalam APK, ga mental ke Chrome
                 val url = request?.url.toString()
+
+                // FIX WA: Cek dulu link WA / intent://
+                if (handleExternalLink(url)) {
+                    return true
+                }
+
+                // Biar semua link kosmedan.my.id tetep di dalam APK, ga mental ke Chrome
                 if (url.contains("kosmedan.my.id")) {
                     return false
                 }
-                // Link luar (WA, dll) buka di browser luar
+                // Link luar lainnya buka di browser luar
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
@@ -138,7 +173,8 @@ class MainActivity : AppCompatActivity() {
                 popupWebView!!.settings.cacheMode = WebSettings.LOAD_NO_CACHE
                 popupWebView!!.settings.userAgentString = webView.settings.userAgentString
 
-                popupWebView!!.webViewClient = WebViewClient()
+                // FIX WA POPUP: Pakai webViewClient yang sama biar popup juga bisa buka WA
+                popupWebView!!.webViewClient = webView.webViewClient
                 popupWebView!!.webChromeClient = object : WebChromeClient() {
                     override fun onShowFileChooser(
                         webView: WebView?,
