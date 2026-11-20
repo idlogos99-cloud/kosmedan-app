@@ -31,7 +31,6 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == Activity.RESULT_OK) {
             val data = result.data
             if (data != null) {
-                // Kalau pilih banyak foto
                 if (data.clipData != null) {
                     val count = data.clipData!!.itemCount
                     val uris = ArrayList<Uri>()
@@ -40,27 +39,22 @@ class MainActivity : AppCompatActivity() {
                     }
                     results = uris.toTypedArray()
                 } else if (data.data != null) {
-                    // Kalau pilih 1 foto
                     results = arrayOf(data.data!!)
                 }
             }
         }
-        // Kalau batal pilih, kirim null biar WebView ga nge-hang
         fileUploadCallback?.onReceiveValue(results)
         fileUploadCallback = null
     }
 
     private fun openFilePicker(filePathCallback: ValueCallback<Array<Uri>>?, fileChooserParams: WebChromeClient.FileChooserParams): Boolean {
-        // Kalau ada callback lama yang belum kelar, batalin dulu
         fileUploadCallback?.onReceiveValue(null)
         fileUploadCallback = filePathCallback
         try {
             val intent = fileChooserParams.createIntent()
-            // Biar bisa pilih banyak foto sekaligus (multiple)
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             filePickerLauncher.launch(intent)
         } catch (e: Exception) {
-            // Fallback kalau createIntent gagal (HP jadul)
             val intent = Intent(Intent.ACTION_GET_CONTENT)
             intent.addCategory(Intent.CATEGORY_OPENABLE)
             intent.type = "image/*"
@@ -72,13 +66,11 @@ class MainActivity : AppCompatActivity() {
 
     // FIX WA: Fungsi khusus buka link WA / intent:// biar ga halaman putih
     private fun handleExternalLink(url: String): Boolean {
-        // 1. Kalau intent://send?phone=... -> parse pakai URI_INTENT_SCHEME
         if (url.startsWith("intent://")) {
             try {
                 val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
                 startActivity(intent)
             } catch (e: Exception) {
-                // Fallback ke wa.me kalau parse gagal
                 try {
                     val phone = url.substringAfter("phone=").substringBefore("&").substringBefore(";").substringBefore("#")
                     val textPart = if (url.contains("text=")) url.substringAfter("text=").substringBefore(";").substringBefore("#") else ""
@@ -88,8 +80,6 @@ class MainActivity : AppCompatActivity() {
             }
             return true
         }
-
-        // 2. Kalau wa.me / whatsapp / tel: / mailto: -> buka di luar APK
         if (url.startsWith("https://wa.me") || url.startsWith("https://api.whatsapp.com") || url.startsWith("whatsapp://") || url.startsWith("tel:") || url.startsWith("mailto:")) {
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -117,14 +107,11 @@ class MainActivity : AppCompatActivity() {
         s.setSupportMultipleWindows(true)
         s.allowFileAccess = true
         s.allowContentAccess = true
-        // FIX APK CACHE: Ini biangnya - LOAD_DEFAULT bikin APK load JS lama tanpa api_key
-        // Ganti ke NO_CACHE biar selalu load Blogger terbaru yang udah bener
         s.cacheMode = WebSettings.LOAD_NO_CACHE
         s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         s.mediaPlaybackRequiresUserGesture = false
         s.userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
-        // FIX APK CACHE: Hapus cache lama yang isinya kode tanpa api_key
         webView.clearCache(true)
         webView.clearHistory()
 
@@ -137,10 +124,20 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
-                // Biar semua link kosmedan.my.id tetep di dalam APK, ga mental ke Chrome
-                if (url.contains("kosmedan.my.id")) {
+                // FIX LOGIN GOOGLE v1.0.3: Link ini WAJIB tetep di dalam APK, jangan mental ke Chrome
+                // Kalau mental ke Chrome, link OAuth-nya kepotong -> Google 400 error
+                if (url.contains("kosmedan.my.id") ||
+                    url.contains("accounts.google.com") ||
+                    url.contains("accounts.google.co.id") ||
+                    url.contains("firebaseapp.com") ||
+                    url.contains("firebase.com") ||
+                    url.contains("googleapis.com") ||
+                    url.contains("gstatic.com") ||
+                    url.contains("google.com/o/oauth") ||
+                    url.contains("auth")) {
                     return false
                 }
+
                 // Link luar lainnya buka di browser luar
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -151,7 +148,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            // FIX UPLOAD FOTO: Ini yang bikin Pilih File kebuka di APK
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -173,7 +169,7 @@ class MainActivity : AppCompatActivity() {
                 popupWebView!!.settings.cacheMode = WebSettings.LOAD_NO_CACHE
                 popupWebView!!.settings.userAgentString = webView.settings.userAgentString
 
-                // FIX WA POPUP: Pakai webViewClient yang sama biar popup juga bisa buka WA
+                // FIX WA POPUP: Pakai webViewClient yang sama biar popup juga bisa buka WA + Login Google
                 popupWebView!!.webViewClient = webView.webViewClient
                 popupWebView!!.webChromeClient = object : WebChromeClient() {
                     override fun onShowFileChooser(
@@ -190,7 +186,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // DITUMPUK, BUKAN GANTIIN - WebView utama tetap ada di bawah
                 container.addView(popupWebView!!)
 
                 val transport = resultMsg?.obj as WebView.WebViewTransport
